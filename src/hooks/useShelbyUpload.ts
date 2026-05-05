@@ -114,12 +114,32 @@ export function useShelbyUpload() {
       await aptosClient.waitForTransaction({ transactionHash: txSubmitted.hash })
 
       // ── Phase 4: Upload to Shelby RPC ─────────────────────
+      // Shelby RPC needs time to index the on-chain registration.
+      // Retry putBlob with exponential backoff (up to ~30s).
       setPhase('uploading')
-      await shelbyClient.rpc.putBlob({
-        account: AccountAddress.from(String(account.address)),
-        blobName,
-        blobData: uint8Data,
-      })
+      const MAX_RETRIES = 8
+      const BASE_DELAY_MS = 1500
+      let lastPutError: unknown
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, BASE_DELAY_MS * Math.pow(1.5, attempt - 1)))
+        }
+        try {
+          await shelbyClient.rpc.putBlob({
+            account: AccountAddress.from(String(account.address)),
+            blobName,
+            blobData: uint8Data,
+          })
+          lastPutError = undefined
+          break
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err)
+          // Only retry on "not registered" errors; fail fast on others
+          if (!msg.includes('not been registered')) throw err
+          lastPutError = err
+        }
+      }
+      if (lastPutError) throw lastPutError
 
       const blobUrl = `${shelbyRpcBase}/v1/blobs/${account.address}/${encodeURIComponent(blobName)}`
 
