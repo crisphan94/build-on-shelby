@@ -2,24 +2,48 @@
 
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
+import { WalletButton } from '@/components/layout/WalletButton'
+import { useShelbyUpload, UPLOAD_PHASE_LABELS, type UploadPhase } from '@/hooks/useShelbyUpload'
+import { useWallet } from '@aptos-labs/wallet-adapter-react'
 import { cn } from '@/lib/utils'
-import { AlertCircle, CheckCircle2, FileUp, Loader2, Upload, X } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckCircle2,
+  Circle,
+  ExternalLink,
+  FileUp,
+  Loader2,
+  Upload,
+  Wallet,
+  X,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
 type WizardState =
   | { step: 1 }
   | { step: 2; file: File }
-  | { step: 3; file: File; name: string; description: string; tags: string[]; uploaderAddr: string }
-  | { step: 'success'; datasetId: string }
-  | { step: 'error'; message: string; prevStep: 3 }
+  | { step: 3; file: File; name: string; description: string; tags: string[] }
+  | { step: 'success'; datasetId: string; txHash: string; merkleRoot: string }
+  | { step: 'error'; message: string; file: File; name: string; description: string; tags: string[] }
 
 const MAX_BYTES = 5 * 1024 * 1024 * 1024 // 5 GB
 
+const UPLOAD_STEPS: Array<{ phase: UploadPhase; label: string }> = [
+  { phase: 'encoding', label: 'Encode file' },
+  { phase: 'signing', label: 'Sign Aptos transaction' },
+  { phase: 'confirming', label: 'On-chain confirmation' },
+  { phase: 'uploading', label: 'Upload to Shelby network' },
+  { phase: 'registering', label: 'Register dataset' },
+]
+
 export function UploadWizard() {
   const router = useRouter()
+  const { connected, account } = useWallet()
+  const { upload, phase, setPhase, reset } = useShelbyUpload()
   const [state, setState] = useState<WizardState>({ step: 1 })
   const [tagInput, setTagInput] = useState('')
+  const [uploading, setUploading] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
 
   // ── Step 1 ──────────────────────────────────────────────
@@ -46,13 +70,10 @@ export function UploadWizard() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState<string[]>([])
-  const [uploaderAddr, setUploaderAddr] = useState('')
 
   function addTag(value: string) {
     const t = value.trim().toLowerCase().slice(0, 32)
-    if (t && !tags.includes(t) && tags.length < 20) {
-      setTags([...tags, t])
-    }
+    if (t && !tags.includes(t) && tags.length < 20) setTags([...tags, t])
     setTagInput('')
   }
 
@@ -76,48 +97,37 @@ export function UploadWizard() {
       alert('Dataset name must be at least 3 characters.')
       return
     }
-    setState({
-      step: 3,
-      file: state.file,
-      name: name.trim(),
-      description: description.trim(),
-      tags,
-      uploaderAddr: uploaderAddr.trim(),
-    })
+    setState({ step: 3, file: state.file, name: name.trim(), description: description.trim(), tags })
   }
 
   // ── Step 3: upload ───────────────────────────────────────
-  const [uploading, setUploading] = useState(false)
-
   async function handleUpload() {
     if (state.step !== 3) return
     setUploading(true)
-
-    const formData = new FormData()
-    formData.append('file', state.file)
-    formData.append('name', state.name)
-    formData.append('description', state.description)
-    formData.append('tags', state.tags.join(','))
-    formData.append('uploaderAddr', state.uploaderAddr)
+    reset()
 
     try {
-      const res = await fetch('/api/datasets/upload', {
-        method: 'POST',
-        body: formData,
+      const result = await upload({
+        file: state.file,
+        name: state.name,
+        description: state.description,
+        tags: state.tags,
       })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Upload failed' }))
-        throw new Error(err.message ?? 'Upload failed')
-      }
-
-      const data = await res.json()
-      setState({ step: 'success', datasetId: data.id })
+      setState({
+        step: 'success',
+        datasetId: result.datasetId,
+        txHash: result.txHash,
+        merkleRoot: result.merkleRoot,
+      })
     } catch (err) {
+      setPhase('error')
       setState({
         step: 'error',
         message: err instanceof Error ? err.message : 'Upload failed. Please try again.',
-        prevStep: 3,
+        file: state.file,
+        name: state.name,
+        description: state.description,
+        tags: state.tags,
       })
     } finally {
       setUploading(false)
@@ -129,7 +139,6 @@ export function UploadWizard() {
 
   return (
     <div className='max-w-2xl mx-auto px-4 sm:px-6 py-12'>
-      {/* Step indicator */}
       {state.step !== 'success' && <StepIndicator current={currentStep as 1 | 2 | 3} />}
 
       {/* Step 1: File selection */}
@@ -223,15 +232,6 @@ export function UploadWizard() {
                 />
               </div>
             </FormField>
-
-            <FormField label='Your Aptos Address' hint='Optional — for attribution'>
-              <Input
-                value={uploaderAddr}
-                onChange={(e) => setUploaderAddr(e.target.value)}
-                placeholder='0x…'
-                className='font-mono text-xs'
-              />
-            </FormField>
           </div>
 
           <div className='flex gap-3'>
@@ -255,9 +255,12 @@ export function UploadWizard() {
         <div className='mt-8 space-y-6'>
           <div>
             <h2 className='text-xl font-semibold text-slate-100 mb-1'>Ready to upload</h2>
-            <p className='text-sm text-slate-400'>Review and confirm your upload to Shelby.</p>
+            <p className='text-sm text-slate-400'>
+              Your file will be registered on Aptos and stored on Shelby network.
+            </p>
           </div>
 
+          {/* Summary */}
           <div className='bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3 text-sm'>
             <SummaryRow label='Name' value={state.name} />
             <SummaryRow
@@ -266,10 +269,62 @@ export function UploadWizard() {
             />
             {state.description && <SummaryRow label='Description' value={state.description} />}
             {state.tags.length > 0 && <SummaryRow label='Tags' value={state.tags.join(', ')} />}
-            {state.uploaderAddr && <SummaryRow label='Uploader' value={state.uploaderAddr} mono />}
+            {account && (
+              <SummaryRow label='Uploader' value={String(account.address)} mono />
+            )}
           </div>
 
-          {!uploading && (
+          {/* Wallet gate */}
+          {!connected ? (
+            <div className='flex flex-col items-center gap-3 py-6 bg-slate-800/50 rounded-xl border border-slate-700 border-dashed'>
+              <Wallet className='w-8 h-8 text-slate-500' />
+              <p className='text-sm text-slate-400 text-center'>
+                Connect your wallet to sign the Aptos transaction
+              </p>
+              <WalletButton />
+            </div>
+          ) : uploading ? (
+            /* Upload progress */
+            <div className='bg-slate-800 rounded-xl border border-slate-700 p-5 space-y-4'>
+              <p className='text-sm font-medium text-slate-200'>Uploading…</p>
+              <div className='space-y-3'>
+                {UPLOAD_STEPS.map(({ phase: stepPhase, label }) => {
+                  const stepIndex = UPLOAD_STEPS.findIndex((s) => s.phase === stepPhase)
+                  const currentIndex = UPLOAD_STEPS.findIndex((s) => s.phase === phase)
+                  const isDone = currentIndex > stepIndex
+                  const isActive = phase === stepPhase
+
+                  return (
+                    <div key={stepPhase} className='flex items-center gap-3'>
+                      {isDone ? (
+                        <CheckCircle2 className='w-4 h-4 text-green-400 shrink-0' />
+                      ) : isActive ? (
+                        <Loader2 className='w-4 h-4 text-indigo-400 animate-spin shrink-0' />
+                      ) : (
+                        <Circle className='w-4 h-4 text-slate-600 shrink-0' />
+                      )}
+                      <span
+                        className={cn(
+                          'text-sm',
+                          isDone && 'text-slate-500 line-through',
+                          isActive && 'text-slate-100 font-medium',
+                          !isDone && !isActive && 'text-slate-600',
+                        )}
+                      >
+                        {isActive ? UPLOAD_PHASE_LABELS[phase] : label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              {phase === 'signing' && (
+                <p className='text-xs text-amber-400 mt-2'>
+                  ✦ Check your wallet for a transaction to approve.
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Action buttons */
             <div className='flex gap-3'>
               <Button variant='secondary' onClick={() => setState({ step: 2, file: state.file })}>
                 Back
@@ -278,16 +333,6 @@ export function UploadWizard() {
                 <Upload className='w-4 h-4' />
                 Upload to Shelby
               </Button>
-            </div>
-          )}
-
-          {uploading && (
-            <div className='flex flex-col items-center gap-4 py-4'>
-              <Loader2 className='w-10 h-10 text-indigo-400 animate-spin' />
-              <div className='text-center'>
-                <p className='text-sm font-medium text-slate-200'>Uploading to Shelby…</p>
-                <p className='text-xs text-slate-500 mt-1'>Please don&apos;t close this page.</p>
-              </div>
             </div>
           )}
         </div>
@@ -305,16 +350,10 @@ export function UploadWizard() {
           </div>
           <Button
             variant='primary'
-            onClick={() =>
-              setState({
-                step: 3,
-                file: (state as { file?: File }).file!,
-                name,
-                description,
-                tags,
-                uploaderAddr,
-              })
-            }
+            onClick={() => {
+              reset()
+              setState({ step: 3, file: state.file, name: state.name, description: state.description, tags: state.tags })
+            }}
             className='w-full'
           >
             Retry
@@ -331,18 +370,40 @@ export function UploadWizard() {
           <div>
             <h2 className='text-2xl font-bold text-slate-100 mb-2'>Dataset uploaded!</h2>
             <p className='text-slate-400'>
-              Your dataset is now stored on Shelby and available globally.
+              Stored on Shelby network and registered on Aptos testnet.
             </p>
           </div>
+
+          {/* Tx info */}
+          <div className='w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-left space-y-3'>
+            <div>
+              <p className='text-xs text-slate-500 mb-1'>Transaction Hash</p>
+              <p className='font-mono text-xs text-slate-300 break-all'>{state.txHash}</p>
+            </div>
+            <div>
+              <p className='text-xs text-slate-500 mb-1'>Merkle Root</p>
+              <p className='font-mono text-xs text-slate-300 break-all'>{state.merkleRoot}</p>
+            </div>
+            <a
+              href={`https://explorer.aptoslabs.com/txn/${state.txHash}?network=testnet`}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors'
+            >
+              <ExternalLink className='w-3 h-3' />
+              View on Aptos Explorer
+            </a>
+          </div>
+
           <div className='flex gap-3'>
             <Button
               variant='secondary'
               onClick={() => {
+                reset()
                 setState({ step: 1 })
                 setName('')
                 setDescription('')
                 setTags([])
-                setUploaderAddr('')
               }}
             >
               Upload another
@@ -357,42 +418,41 @@ export function UploadWizard() {
   )
 }
 
+// ── Sub-components ────────────────────────────────────────────
+
 function StepIndicator({ current }: { current: 1 | 2 | 3 }) {
-  const steps = ['Select file', 'Details', 'Upload']
+  const steps = [
+    { n: 1, label: 'Select file' },
+    { n: 2, label: 'Details' },
+    { n: 3, label: 'Upload' },
+  ]
   return (
     <div className='flex items-center gap-2'>
-      {steps.map((label, i) => {
-        const num = i + 1
-        const done = num < current
-        const active = num === current
-        return (
-          <div key={label} className='flex items-center gap-2 flex-1 last:flex-none'>
+      {steps.map(({ n, label }, i) => (
+        <div key={n} className='flex items-center gap-2'>
+          <div className='flex items-center gap-1.5'>
             <div
               className={cn(
-                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 border',
-                done
-                  ? 'bg-indigo-600 border-indigo-600 text-white'
-                  : active
-                    ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                    : 'border-slate-700 text-slate-600',
+                'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
+                n < current && 'bg-indigo-500 text-white',
+                n === current && 'bg-indigo-500 text-white ring-2 ring-indigo-400/40',
+                n > current && 'bg-slate-700 text-slate-500',
               )}
             >
-              {done ? <CheckCircle2 className='w-4 h-4' /> : num}
+              {n < current ? <CheckCircle2 className='w-3.5 h-3.5' /> : n}
             </div>
             <span
               className={cn(
-                'text-sm hidden sm:block',
-                active ? 'text-slate-200 font-medium' : 'text-slate-500',
+                'text-xs hidden sm:block',
+                n === current ? 'text-slate-200 font-medium' : 'text-slate-500',
               )}
             >
               {label}
             </span>
-            {i < steps.length - 1 && (
-              <div className={cn('flex-1 h-px', done ? 'bg-indigo-600' : 'bg-slate-700')} />
-            )}
           </div>
-        )
-      })}
+          {i < steps.length - 1 && <div className='flex-1 h-px bg-slate-700 min-w-[24px]' />}
+        </div>
+      ))}
     </div>
   )
 }
@@ -409,13 +469,13 @@ function FormField({
   children: React.ReactNode
 }) {
   return (
-    <div className='space-y-1.5'>
-      <div className='flex items-center justify-between'>
+    <div>
+      <div className='flex items-baseline justify-between mb-1.5'>
         <label className='text-sm font-medium text-slate-300'>
           {label}
-          {required && <span className='text-red-400 ml-1'>*</span>}
+          {required && <span className='text-red-400 ml-0.5'>*</span>}
         </label>
-        {hint && <span className='text-xs text-slate-500'>{hint}</span>}
+        {hint && <span className='text-xs text-slate-600'>{hint}</span>}
       </div>
       {children}
     </div>
@@ -425,8 +485,8 @@ function FormField({
 function SummaryRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className='flex gap-3'>
-      <span className='text-slate-500 w-24 shrink-0'>{label}</span>
-      <span className={cn('text-slate-200 break-all', mono && 'font-mono text-xs')}>{value}</span>
+      <span className='text-slate-500 shrink-0 w-24'>{label}</span>
+      <span className={cn('text-slate-300 break-all', mono && 'font-mono text-xs')}>{value}</span>
     </div>
   )
 }

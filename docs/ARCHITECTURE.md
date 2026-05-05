@@ -214,9 +214,10 @@ CREATE TABLE datasets (
   size_bytes    INTEGER NOT NULL,          -- Raw file size in bytes
   file_name     TEXT NOT NULL,             -- Original filename
   mime_type     TEXT,                      -- e.g. "text/csv"
-  merkle_root   TEXT NOT NULL,             -- Hex string from Shelby
-  blob_url      TEXT NOT NULL UNIQUE,      -- Shelby global URL
-  uploader_addr TEXT,                      -- Aptos wallet address (optional in MVP)
+  merkle_root   TEXT NOT NULL,             -- Hex string from Shelby SDK
+  blob_url      TEXT NOT NULL UNIQUE,      -- Shelby RPC blob URL
+  uploader_addr TEXT,                      -- Aptos wallet address (from wallet connect)
+  tx_hash       TEXT,                      -- Aptos transaction hash (on-chain registration)
   download_count INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,          -- Unix timestamp (ms)
   updated_at    INTEGER NOT NULL           -- Unix timestamp (ms)
@@ -249,6 +250,7 @@ Returns paginated list of datasets.
 | `order` | `asc\|desc` | `desc` | Sort direction |
 
 **Response:**
+
 ```json
 {
   "data": [
@@ -279,23 +281,31 @@ Returns paginated list of datasets.
 
 ### `POST /api/datasets/upload`
 
-Upload a new dataset to Shelby and register it.
+Register a dataset that has already been uploaded to Shelby via the browser SDK.
+This endpoint is called **after** the client completes the on-chain + RPC upload steps.
 
-**Request:** `multipart/form-data`
+**Request:** `application/json`
 | Field | Required | Description |
 |---|---|---|
-| `file` | Yes | Binary file (max 5GB in MVP) |
+| `id` | Yes | Pre-generated dataset ID (d\_ prefix) |
 | `name` | Yes | Dataset name (3–120 chars) |
 | `description` | No | Description (max 2000 chars) |
-| `tags` | No | Comma-separated tags, e.g. `nlp,english` |
+| `tags` | No | Array of tag strings |
+| `fileName` | Yes | Original filename |
+| `sizeBytes` | Yes | File size in bytes |
+| `mimeType` | No | MIME type |
+| `merkleRoot` | Yes | Blob merkle root from SDK |
+| `blobUrl` | Yes | Shelby RPC blob URL |
 | `uploaderAddr` | No | Aptos wallet address |
+| `txHash` | No | Aptos transaction hash from registration |
 
 **Response `201`:**
+
 ```json
 {
   "id": "d_xyz789",
   "merkle_root": "0x...",
-  "blob_url": "shelby://global/d_xyz789"
+  "blob_url": "https://api.testnet.shelby.xyz/shelby/..."
 }
 ```
 
@@ -303,8 +313,8 @@ Upload a new dataset to Shelby and register it.
 | Status | Code | Description |
 |---|---|---|
 | `400` | `INVALID_INPUT` | Validation failed |
-| `413` | `FILE_TOO_LARGE` | File exceeds 5GB |
-| `500` | `SHELBY_ERROR` | Shelby SDK error |
+| `429` | `RATE_LIMITED` | Too many uploads (5/IP/hour) |
+| `500` | `DB_ERROR` | Database insert failed |
 
 ---
 
@@ -321,6 +331,7 @@ Get single dataset metadata.
 Verify the Merkle root of a stored dataset against Shelby's live commitment.
 
 **Response:**
+
 ```json
 {
   "verified": true,
@@ -337,6 +348,7 @@ Verify the Merkle root of a stored dataset against Shelby's live commitment.
 Proxy-stream the blob from Shelby to the client.
 
 **Response:** Binary stream with headers:
+
 ```
 Content-Type: <mime_type>
 Content-Disposition: attachment; filename="<file_name>"
@@ -345,50 +357,57 @@ Content-Length: <size_bytes>
 
 ---
 
-## 6. Shelby SDK Integration
+## 6. Shelby SDK Integration (Phase 2)
 
-All Shelby operations are encapsulated in `src/lib/shelby/`. This prevents direct SDK calls from leaking into route handlers.
+Upload is now fully **client-side** using `@shelby-protocol/sdk/browser`. The 3-step flow:
 
-```typescript
-// src/lib/shelby/client.ts
-import { ShelbyClient } from "@shelby/sdk";
-
-let instance: ShelbyClient | null = null;
-
-export function getShelbyClient(): ShelbyClient {
-  if (!instance) {
-    instance = new ShelbyClient({
-      rpcNode: process.env.SHELBY_RPC_NODE!,
-      accountAddress: process.env.SHELBY_ACCOUNT_ADDRESS!,
-      privateKey: process.env.SHELBY_PRIVATE_KEY!,
-      network: process.env.APTOS_NETWORK as "devnet" | "testnet",
-    });
-  }
-  return instance;
-}
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Browser (useShelbyUpload hook)                                     │
+│                                                                     │
+│  Step 1 — Encode                                                    │
+│    createDefaultErasureCodingProvider()  ← WASM (clay-codes)       │
+│    generateCommitments(provider, fileBuffer)                        │
+│    → blob_merkle_root, raw_data_size, commitments                   │
+│                                                                     │
+│  Step 2 — On-chain Registration                                     │
+│    ShelbyBlobClient.createRegisterBlobPayload({                     │
+│      account, blobName, blobSize, blobMerkleRoot,                   │
+│      numChunksets, expirationMicros, encoding: 0                    │
+│    })                                                               │
+│    wallet.signAndSubmitTransaction(payload)  ← wallet popup        │
+│    aptosClient.waitForTransaction(txHash)                           │
+│                                                                     │
+│  Step 3 — RPC Upload                                                │
+│    shelbyClient.rpc.putBlob({ account, blobName, blobData })       │
+│    POST /api/datasets/upload  ← JSON with txHash                   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
+**Network:** Aptos Testnet (`Network.TESTNET`)
+**Contract deployer:** `0x85fdb9a176ab8ef1d9d9c1b60d60b3924f0800ac1de1cc2085fb0b8bb4988e6a`
+**Shelby RPC:** `https://api.testnet.shelby.xyz/shelby`
+**Aptos fullnode:** `https://api.testnet.aptoslabs.com/v1`
+
 ```typescript
-// src/lib/shelby/upload.ts
-export async function uploadBlob(
-  buffer: Buffer,
-  blobName: string,
-  mimeType: string
-): Promise<{ merkleRoot: string; blobUrl: string }> {
-  const client = getShelbyClient();
-  const result = await client.upload({
-    data: buffer,
-    name: blobName,
-    contentType: mimeType,
-  });
-  return {
-    merkleRoot: result.merkleRoot,
-    blobUrl: result.url,
-  };
-}
+// src/hooks/useShelbyUpload.ts (simplified)
+import {
+  ShelbyClient,
+  ShelbyBlobClient,
+  generateCommitments,
+  createDefaultErasureCodingProvider,
+  expectedTotalChunksets,
+  ERASURE_CODE_PARAMS,
+} from '@shelby-protocol/sdk/browser'
+import { Network, Aptos, AptosConfig, AccountAddress } from '@aptos-labs/ts-sdk'
+import { useWallet } from '@aptos-labs/wallet-adapter-react'
+
+// Encoding: ClayCode_16Total_10Data_13Helper = index 0
+const ENCODING = ERASURE_CODE_PARAMS.ClayCode_16Total_10Data_13Helper.enumIndex
 ```
 
-> **Security note:** Private key is read from environment variables only; never logged or returned in API responses.
+> **Security note:** No private key is used. The wallet adapter handles signing.
+> The server-side `SHELBY_PRIVATE_KEY` env var is unused in Phase 2 upload flow.
 
 ---
 
@@ -429,6 +448,7 @@ export async function uploadBlob(
 **Decision:** Use Turso (distributed SQLite) for dataset metadata.
 
 **Reasoning:**
+
 - MVP needs zero infrastructure setup
 - Dataset metadata is read-heavy and simple — no complex joins needed
 - Turso supports edge-native reads (Vercel Edge Functions compatible)
@@ -436,15 +456,16 @@ export async function uploadBlob(
 
 ---
 
-### ADR-002: Server-side Shelby uploads (not client-side direct upload)
+### ADR-002: Client-side Shelby uploads via wallet (Phase 2)
 
-**Decision:** File bytes go to the Next.js server, which then calls the Shelby SDK. Client never calls Shelby directly.
+**Decision:** File encoding, on-chain registration, and RPC upload all happen in the browser via `@shelby-protocol/sdk/browser`. Server only records metadata.
 
 **Reasoning:**
-- Shelby private key must stay server-side
-- Centralized validation and rate limiting
-- Enables progress tracking and error recovery in one place
-- Trade-off: larger files require enough server memory/streaming. Mitigated with streaming multipart parsing (`formidable`).
+
+- No server private key required — wallet adapter handles signing
+- Follows Shelby's official browser upload guide exactly
+- The 5-step progress UI (encode → sign → confirm → upload → register) gives clear feedback
+- Trade-off: client must have Aptos wallet + APT + ShelbyUSD tokens
 
 ---
 
@@ -453,6 +474,7 @@ export async function uploadBlob(
 **Decision:** No WebSocket or SSE for upload progress in MVP.
 
 **Reasoning:**
+
 - Complexity not justified for MVP
 - Simple polling from client (`/api/datasets/:id` every 2s) sufficient for upload confirmation
 - Phase 2 adds Server-Sent Events for progress stream.
@@ -464,6 +486,7 @@ export async function uploadBlob(
 **Decision:** Verification failure on `GET /api/datasets/:id/verify` returns a `verified: false` response rather than a 4xx error.
 
 **Reasoning:**
+
 - Verification is an informational check for the user
 - Returning an error would conflate "dataset exists" with "dataset is untampered"
 - UI shows a clear ❌ / ✓ indicator based on `verified` boolean

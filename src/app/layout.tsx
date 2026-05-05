@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { Navbar } from '@/components/layout/Navbar'
+import { WalletProvider } from '@/providers/WalletProvider'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -22,8 +23,10 @@ export default function RootLayout({
   return (
     <html lang='en' className={`${inter.className} h-full`}>
       <body className='min-h-full flex flex-col bg-[#0f172a] text-slate-100'>
-        <Navbar />
-        <main className='flex-1'>{children}</main>
+        <WalletProvider>
+          <Navbar />
+          <main className='flex-1'>{children}</main>
+        </WalletProvider>
       </body>
     </html>
   )

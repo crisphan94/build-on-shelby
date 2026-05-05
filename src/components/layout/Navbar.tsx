@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { WalletButton } from '@/components/layout/WalletButton'
 import { Database, Search, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -64,6 +65,9 @@ export function Navbar() {
               <span className='sm:hidden'>Upload</span>
             </Button>
           </Link>
+
+          {/* Wallet */}
+          <WalletButton />
         </div>
       </div>
     </nav>

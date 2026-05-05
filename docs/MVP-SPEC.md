@@ -31,33 +31,36 @@ Ship a functional, publicly accessible web app that demonstrates the core value 
 
 ### Success Metrics (MVP)
 
-| Metric | Target |
-|---|---|
-| Datasets successfully uploaded end-to-end | ≥ 10 test datasets |
-| Merkle verification round-trip works | ✓ (must pass) |
-| Download works for files up to 1GB | ✓ (must pass) |
-| Page load time (catalog, LCP) | < 2.5s on 3G |
-| Mobile-responsive (375px breakpoint) | ✓ (must pass) |
-| Lighthouse accessibility score | ≥ 80 |
-| Zero critical security vulnerabilities (OWASP Top 10) | ✓ (must pass) |
+| Metric                                                | Target             |
+| ----------------------------------------------------- | ------------------ |
+| Datasets successfully uploaded end-to-end             | ≥ 10 test datasets |
+| Merkle verification round-trip works                  | ✓ (must pass)      |
+| Download works for files up to 1GB                    | ✓ (must pass)      |
+| Page load time (catalog, LCP)                         | < 2.5s on 3G       |
+| Mobile-responsive (375px breakpoint)                  | ✓ (must pass)      |
+| Lighthouse accessibility score                        | ≥ 80               |
+| Zero critical security vulnerabilities (OWASP Top 10) | ✓ (must pass)      |
 
 ---
 
 ## 2. User Personas
 
 ### Persona A — "The AI Researcher" (Primary Downloader)
+
 - Needs quality training data for fine-tuning LLMs or training classifiers
 - Skeptical about data provenance — wants to verify before using
 - Comfortable with technical metadata (file size, MIME type, Merkle hash)
 - Primary actions: **Browse → Inspect → Verify → Download**
 
 ### Persona B — "The Data Curator" (Uploader)
+
 - Has cleaned, labeled datasets they want to share or monetize (Phase 2)
 - Wants easy upload with proper metadata tagging
 - Wants a shareable URL for their dataset
 - Primary actions: **Upload → Inspect → Share URL**
 
 ### Persona C — "The Developer" (Builder / Explorer)
+
 - Building an AI pipeline and evaluating Shelby as the data store
 - Wants to see proof-of-concept code and API examples
 - Primary actions: **Browse → Download → API exploration**
@@ -66,20 +69,21 @@ Ship a functional, publicly accessible web app that demonstrates the core value 
 
 ## 3. Feature List
 
-| ID | Feature | Priority | Phase |
-|---|---|---|---|
-| F-01 | Dataset Catalog (paginated grid) | P0 | MVP |
-| F-02 | Dataset Upload (multi-step wizard) | P0 | MVP |
-| F-03 | Dataset Detail & Inspect | P0 | MVP |
-| F-04 | Merkle Root Verification | P0 | MVP |
-| F-05 | Dataset Download | P0 | MVP |
-| F-06 | Search & Tag Filter | P1 | MVP |
-| F-07 | Aptos Wallet Connect | P0 | Phase 2 |
-| F-08 | Pay-per-Download (ShelbyUSD) | P0 | Phase 2 |
-| F-09 | Upload Access Control | P1 | Phase 2 |
-| F-10 | Dataset Versioning | P1 | Phase 2 |
-| F-11 | Uploader Dashboard (analytics) | P2 | Phase 2 |
-| F-12 | Dataset Rating & Reviews | P2 | Phase 3 |
+| ID   | Feature                            | Priority | Phase      |
+| ---- | ---------------------------------- | -------- | ---------- |
+| F-01 | Dataset Catalog (paginated grid)   | P0       | MVP        |
+| F-02 | Dataset Upload (multi-step wizard) | P0       | MVP        |
+| F-03 | Dataset Detail & Inspect           | P0       | MVP        |
+| F-04 | Merkle Root Verification           | P0       | MVP        |
+| F-05 | Dataset Download                   | P0       | MVP        |
+| F-06 | Search & Tag Filter                | P1       | MVP        |
+| F-07 | Aptos Wallet Connect               | P0       | Phase 2 ✅ |
+| F-08 | Real Shelby SDK Upload (on-chain)  | P0       | Phase 2 ✅ |
+| F-09 | txHash Storage + Explorer Link     | P0       | Phase 2 ✅ |
+| F-10 | Faucet Page (APT + ShelbyUSD)      | P1       | Phase 3    |
+| F-11 | Dataset Versioning                 | P1       | Phase 3    |
+| F-12 | Uploader Dashboard (analytics)     | P2       | Phase 3    |
+| F-13 | Dataset Rating & Reviews           | P2       | Phase 4    |
 
 ---
 
@@ -92,6 +96,7 @@ Ship a functional, publicly accessible web app that demonstrates the core value 
 **Description:** A paginated grid displaying all publicly available datasets on DataShelf.
 
 #### User Story
+
 > As an AI researcher, I want to browse all available datasets in a visual grid so I can quickly find what I need without knowing exact names.
 
 #### Acceptance Criteria
@@ -127,17 +132,20 @@ Ship a functional, publicly accessible web app that demonstrates the core value 
 **Description:** A multi-step wizard that guides the user through uploading a file to Shelby and registering it in DataShelf.
 
 #### User Story
+
 > As a data curator, I want to upload my dataset with proper metadata so others can find and trust it.
 
 #### Acceptance Criteria
 
 **Step 1 — File Selection**
+
 - [ ] Drag-and-drop zone or click-to-browse file picker
 - [ ] Shows file name, size, and detected MIME type after selection
 - [ ] Rejects files over 5GB with a clear error message
 - [ ] Accepted file types shown in helper text
 
 **Step 2 — Metadata Entry**
+
 - [ ] Required field: `name` (3–120 chars)
 - [ ] Optional fields: `description` (max 2000 chars), `tags` (max 20, each max 32 chars), `uploaderAddress` (Aptos address format, optional)
 - [ ] Tag input: type and press Enter/comma to add; click × to remove
@@ -145,12 +153,14 @@ Ship a functional, publicly accessible web app that demonstrates the core value 
 - [ ] All fields validated before proceeding
 
 **Step 3 — Upload Progress**
+
 - [ ] Progress bar shown during upload
 - [ ] Cannot navigate away during upload (prompt shown on beforeunload)
 - [ ] On success: redirect to `/dataset/:id`
 - [ ] On failure: error message with "Retry" button — user stays on Step 3
 
 **General Wizard Rules**
+
 - [ ] "Back" button on each step (except Step 1)
 - [ ] Step indicator shows current position (1/3, 2/3, 3/3)
 - [ ] Keyboard accessible (Tab navigation + Enter to advance)
@@ -170,6 +180,7 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 **Description:** A full-page view of a single dataset with all metadata and available actions.
 
 #### User Story
+
 > As an AI researcher, I want to see all metadata for a dataset so I can evaluate it before downloading.
 
 #### Acceptance Criteria
@@ -191,6 +202,7 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 **Description:** Allows a user to verify that the stored Merkle root in DataShelf matches Shelby's live on-chain commitment for the dataset blob.
 
 #### User Story
+
 > As an AI researcher, I want to cryptographically verify a dataset's integrity so I can trust it hasn't been modified since upload.
 
 #### Acceptance Criteria
@@ -231,6 +243,7 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 **Description:** Stream the raw blob from Shelby to the user's browser as a file download.
 
 #### User Story
+
 > As an AI researcher, I want to download a dataset directly to my machine so I can use it in my training pipeline.
 
 #### Acceptance Criteria
@@ -249,6 +262,7 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 **Description:** Real-time text search and tag-based filtering of the dataset catalog.
 
 #### User Story
+
 > As an AI researcher, I want to search for "image classification" and filter by tag so I find relevant datasets fast.
 
 #### Acceptance Criteria
@@ -267,26 +281,28 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 
 ## 5. Page Inventory
 
-| Route | Page | Components Used |
-|---|---|---|
-| `/` | Redirect → `/catalog` | — |
-| `/catalog` | Dataset Catalog | Navbar, SearchBar, TagFilter, DatasetGrid, DatasetCard, Pagination |
-| `/dataset/[id]` | Dataset Detail | Navbar, Breadcrumb, DatasetMeta, TagBadges, VerifyPanel, DownloadButton |
-| `/upload` | Upload Wizard | Navbar, UploadWizard (Steps 1–3) |
-| `/404` | Not Found | Navbar, EmptyState |
-| `/500` | Server Error | Navbar, ErrorState |
+| Route           | Page                  | Components Used                                                         |
+| --------------- | --------------------- | ----------------------------------------------------------------------- |
+| `/`             | Redirect → `/catalog` | —                                                                       |
+| `/catalog`      | Dataset Catalog       | Navbar, SearchBar, TagFilter, DatasetGrid, DatasetCard, Pagination      |
+| `/dataset/[id]` | Dataset Detail        | Navbar, Breadcrumb, DatasetMeta, TagBadges, VerifyPanel, DownloadButton |
+| `/upload`       | Upload Wizard         | Navbar, UploadWizard (Steps 1–3)                                        |
+| `/404`          | Not Found             | Navbar, EmptyState                                                      |
+| `/500`          | Server Error          | Navbar, ErrorState                                                      |
 
 ---
 
 ## 6. Non-Functional Requirements
 
 ### Performance
+
 - Catalog page: LCP < 2.5s (on 4G)
 - Dataset detail page: LCP < 1.5s (SSR)
 - API responses (list): < 200ms p95
 - API responses (upload): latency acceptable — progress bar shown
 
 ### Accessibility
+
 - WCAG 2.1 AA compliance
 - All interactive elements keyboard-navigable
 - Focus rings visible on all focusable elements
@@ -295,17 +311,20 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 - Minimum contrast ratio: 4.5:1 for normal text, 3:1 for large text
 
 ### Responsive Design
-| Breakpoint | Target Device |
-|---|---|
-| 375px | iPhone SE |
-| 768px | iPad portrait |
-| 1024px | iPad landscape / small laptop |
-| 1440px | Desktop |
+
+| Breakpoint | Target Device                 |
+| ---------- | ----------------------------- |
+| 375px      | iPhone SE                     |
+| 768px      | iPad portrait                 |
+| 1024px     | iPad landscape / small laptop |
+| 1440px     | Desktop                       |
 
 ### Browser Support
+
 - Chrome 120+, Firefox 121+, Safari 17+, Edge 120+
 
 ### File Size Limits
+
 - Maximum upload: 5 GB (MVP)
 - No minimum file size
 
@@ -313,33 +332,109 @@ IDLE → FILE_SELECTED → METADATA_ENTERED → UPLOADING → SUCCESS
 
 ## 7. Out of Scope (Phase 2+)
 
-The following are **explicitly excluded** from the MVP to keep scope manageable:
+The following are **explicitly excluded** from the current phase to keep scope manageable:
 
-| Feature | Reason Deferred |
-|---|---|
-| Aptos wallet connect | Requires smart contract + wallet adapter integration |
-| Pay-per-download | Depends on wallet connect |
-| User accounts / login | Not needed for public catalog MVP |
-| Dataset versioning | Schema complexity; v2 feature |
-| Uploader earnings dashboard | Depends on payment integration |
-| Dataset access control (private blobs) | Depends on Aptos ACL contracts |
-| Real-time upload progress (SSE) | Complexity; polling sufficient for MVP |
-| S3-compatible API endpoint | Separate service; Phase 3 |
-| Dataset preview (inline viewer) | Nice-to-have; add in Phase 2 |
-| Comments / rating | Community feature; Phase 3 |
+| Feature                                | Reason Deferred                                |
+| -------------------------------------- | ---------------------------------------------- |
+| Faucet UI (APT + ShelbyUSD)            | Phase 3 — needs confirmed faucet API endpoints |
+| Pay-per-download                       | Depends on ShelbyUSD micropayment channels     |
+| User accounts / login                  | Not needed for public catalog MVP              |
+| Dataset versioning                     | Schema complexity; v2 feature                  |
+| Uploader earnings dashboard            | Depends on payment integration                 |
+| Dataset access control (private blobs) | Depends on Aptos ACL contracts                 |
+| Real-time upload progress (SSE)        | Complexity; polling sufficient for MVP         |
+| S3-compatible API endpoint             | Separate service; Phase 3                      |
+| Dataset preview (inline viewer)        | Nice-to-have; add in Phase 2                   |
+| Comments / rating                      | Community feature; Phase 3                     |
 
 ---
 
-## 8. Phase 2 Roadmap Preview
+## 8. Phase 2 — Wallet Connect + On-Chain Upload ✅ (Implemented)
+
+Phase 2 has been completed. The following features are now live:
+
+### F-07: Aptos Wallet Connect
+
+- `WalletProvider` wraps the entire app via `AptosWalletAdapterProvider` (Testnet)
+- `WalletButton` in Navbar: auto-detects installed wallets (Petra, Pontem, etc.), shows connect dropdown or "Install Petra" fallback
+- Connected state shows truncated address + dropdown with Explorer link + Disconnect
+
+### F-08: Real Shelby SDK Upload Flow
+
+Upload now follows the 3-step Shelby protocol:
 
 ```
-Phase 1 (MVP)           Phase 2                     Phase 3
-─────────────────────   ──────────────────────────  ────────────────────
-✓ Browse catalog        + Wallet connect (Aptos)    + S3-compatible API
-✓ Upload blobs          + Pay-per-download (SUSD)   + Dataset ratings
-✓ Verify Merkle root    + Access control            + Dataset comments
-✓ Download blobs        + Private datasets          + CLI tooling
-✓ Search + filter       + Dataset versioning        + Organization accounts
-                        + Uploader dashboard        + Bulk upload
-                        + Upload progress SSE
+Step 1 — Encode  →  generateCommitments() via @shelby-protocol/sdk/browser
+                     (Clay Code 16-10-13 erasure coding, WASM)
+
+Step 2 — Sign TX →  ShelbyBlobClient.createRegisterBlobPayload()
+                     wallet.signAndSubmitTransaction()
+                     Aptos waitForTransaction()
+
+Step 3 — RPC     →  shelbyClient.rpc.putBlob()
+                     POST /api/datasets/upload (JSON, stores txHash)
 ```
+
+Upload wizard Step 3 shows a **live progress tracker**: Encode → Sign TX → Confirm → Upload → Register
+
+### F-09: txHash storage
+
+- `datasets` table now has `tx_hash TEXT` column (migration `0001_rapid_bullseye.sql`)
+- Upload API (`POST /api/datasets/upload`) accepts JSON body (replaced multipart)
+- Success screen shows tx hash + Aptos Explorer link
+
+### Network: Aptos Testnet
+
+- RPC: `https://api.testnet.shelby.xyz/shelby`
+- Explorer: `https://explorer.aptoslabs.com/txn/<hash>?network=testnet`
+- Required tokens: APT (gas) from [Aptos Faucet](https://aptos.dev/network/faucet) + ShelbyUSD from [Shelby Discord](https://discord.gg/shelbyprotocol)
+
+### New env vars
+
+```bash
+NEXT_PUBLIC_SHELBY_API_KEY=""   # Geomi client key (optional, anonymous mode if blank)
+NEXT_PUBLIC_APTOS_API_KEY=""    # Geomi Aptos API key (optional, improves rate limits)
+```
+
+---
+
+## 9. Phase 3 Roadmap
+
+```
+Phase 2 (Done)              Phase 3                      Phase 4
+──────────────────────────  ───────────────────────────  ────────────────────
+✓ Wallet connect (Aptos)    + Faucet page (APT + SUSD)  + S3-compatible API
+✓ On-chain blob register    + Pay-per-download (SUSD)   + Dataset ratings
+✓ Real Shelby SDK upload    + Access control             + Dataset comments
+✓ txHash stored + shown     + Private datasets           + CLI tooling
+✓ Upload progress steps     + Dataset versioning         + Organization accounts
+                            + Uploader dashboard         + Bulk upload
+                            + Upload progress SSE
+```
+
+### Phase 3 Faucet Feature Plan
+
+A `/faucet` page to help developers fund their Aptos testnet accounts:
+
+**APT Faucet** (public API, proxy via `/api/faucet/apt`)
+
+```
+POST https://faucet.testnet.aptoslabs.com/mint?address=<addr>&amount=100000000
+```
+
+- 1 APT per request
+- Rate-limited per address
+
+**ShelbyUSD Faucet** (endpoint TBD)
+
+- Shelby docs list a faucet widget at `https://docs.shelby.xyz/apis/faucet/shelbyusd`
+- API endpoint not yet publicly documented — needs confirmation from Shelby team or Discord
+- Fallback: link to Shelby Discord for manual ShelbyUSD drip
+
+**UI Plan:**
+
+- `/faucet` page with two cards: APT + ShelbyUSD
+- Wallet connect required → auto-fills address
+- Each card: current balance + "Request Tokens" button
+- Status: idle / loading / success (tx hash) / error
+- Faucet link in Navbar

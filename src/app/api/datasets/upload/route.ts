@@ -1,10 +1,6 @@
 import { insertDataset } from '@/lib/db/datasets'
-import { uploadBlob } from '@/lib/shelby/client'
-import { stringifyTags } from '@/lib/utils'
-import { nanoid } from 'nanoid'
 import { NextRequest, NextResponse } from 'next/server'
-
-const MAX_BYTES = parseInt(process.env.MAX_UPLOAD_BYTES ?? '5368709120', 10)
+import { z } from 'zod'
 
 // Simple in-memory rate limiter (per IP, resets on server restart)
 const uploadCounts = new Map<string, { count: number; resetAt: number }>()
@@ -27,6 +23,20 @@ function getClientIp(request: NextRequest): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1'
 }
 
+const bodySchema = z.object({
+  id: z.string().min(1).max(32),
+  name: z.string().min(3).max(120),
+  description: z.string().max(2000).nullable().optional(),
+  tags: z.array(z.string().max(32)).max(20).default([]),
+  fileName: z.string().min(1).max(255),
+  sizeBytes: z.number().int().positive(),
+  mimeType: z.string().max(100).nullable().optional(),
+  merkleRoot: z.string().min(1),
+  blobUrl: z.string().url(),
+  uploaderAddr: z.string().nullable().optional(),
+  txHash: z.string().nullable().optional(),
+})
+
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
@@ -39,104 +49,59 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  let formData: FormData
+  let raw: unknown
   try {
-    formData = await request.formData()
+    raw = await request.json()
   } catch {
     return NextResponse.json(
-      { error: 'INVALID_INPUT', message: 'Expected multipart/form-data' },
+      { error: 'INVALID_INPUT', message: 'Expected JSON body' },
       { status: 400 },
     )
   }
 
-  const file = formData.get('file')
-  if (!file || typeof file === 'string') {
+  const parsed = bodySchema.safeParse(raw)
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: 'INVALID_INPUT', message: 'No file provided' },
+      { error: 'INVALID_INPUT', message: parsed.error.issues[0]?.message ?? 'Invalid input' },
       { status: 400 },
     )
   }
 
-  const name = (formData.get('name') as string | null)?.trim()
-  if (!name || name.length < 3 || name.length > 120) {
-    return NextResponse.json(
-      {
-        error: 'INVALID_INPUT',
-        message: 'Name must be 3–120 characters',
-      },
-      { status: 400 },
-    )
-  }
-
-  const description = (formData.get('description') as string | null)?.trim()?.slice(0, 2000) ?? null
-
-  const rawTags = (formData.get('tags') as string | null) ?? ''
-  const tags = rawTags
-    .split(',')
-    .map((t) => t.trim().toLowerCase().slice(0, 32))
-    .filter(Boolean)
-    .slice(0, 20)
-
-  const uploaderAddr = (formData.get('uploaderAddr') as string | null)?.trim() || null
-
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json(
-      { error: 'FILE_TOO_LARGE', message: 'File exceeds 5 GB limit' },
-      { status: 413 },
-    )
-  }
-
-  // Convert Blob → Buffer
-  const arrayBuffer = await file.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
-
-  let uploadResult
-  try {
-    uploadResult = await uploadBlob({
-      data: buffer,
-      name: file.name,
-      contentType: file.type || 'application/octet-stream',
-    })
-  } catch (err) {
-    console.error('[upload] Shelby upload failed:', err)
-    return NextResponse.json(
-      { error: 'SHELBY_ERROR', message: 'Failed to upload to Shelby' },
-      { status: 500 },
-    )
-  }
-
-  const id = 'd_' + nanoid(10)
+  const {
+    id,
+    name,
+    description,
+    tags,
+    fileName,
+    sizeBytes,
+    mimeType,
+    merkleRoot,
+    blobUrl,
+    uploaderAddr,
+    txHash,
+  } = parsed.data
 
   try {
     await insertDataset({
       id,
       name,
-      description,
-      tags: stringifyTags(tags),
-      sizeBytes: file.size,
-      fileName: file.name,
-      mimeType: file.type || null,
-      merkleRoot: uploadResult.merkleRoot,
-      blobUrl: uploadResult.blobUrl,
-      uploaderAddr,
-      downloadCount: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      description: description ?? null,
+      tags: JSON.stringify(tags),
+      sizeBytes,
+      fileName,
+      mimeType: mimeType ?? null,
+      merkleRoot,
+      blobUrl,
+      uploaderAddr: uploaderAddr ?? null,
+      txHash: txHash ?? null,
     })
   } catch (err) {
     console.error('[upload] DB insert failed:', err)
     return NextResponse.json(
-      { error: 'DB_ERROR', message: 'Failed to register dataset' },
+      { error: 'DB_ERROR', message: 'Failed to save dataset' },
       { status: 500 },
     )
   }
 
-  return NextResponse.json(
-    {
-      id,
-      merkleRoot: uploadResult.merkleRoot,
-      blobUrl: uploadResult.blobUrl,
-    },
-    { status: 201 },
-  )
+  return NextResponse.json({ id, merkleRoot, blobUrl }, { status: 201 })
 }

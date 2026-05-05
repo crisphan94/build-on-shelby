@@ -12,6 +12,7 @@ export const datasets = sqliteTable('datasets', {
   merkleRoot: text('merkle_root').notNull(),
   blobUrl: text('blob_url').notNull().unique(),
   uploaderAddr: text('uploader_addr'),
+  txHash: text('tx_hash'),
   downloadCount: integer('download_count').notNull().default(0),
   createdAt: integer('created_at')
     .notNull()

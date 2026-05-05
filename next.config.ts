@@ -1,7 +1,9 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  /* config options here */
-};
+  // Turbopack is default in Next.js 16; WASM is supported natively.
+  // Setting turbopack: {} silences the "webpack config present" warning.
+  turbopack: {},
+}
 
-export default nextConfig;
+export default nextConfig
