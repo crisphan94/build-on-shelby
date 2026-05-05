@@ -62,16 +62,19 @@ export function useShelbyUpload() {
       const apiKey = process.env.NEXT_PUBLIC_SHELBY_API_KEY
 
       // Detect network from connected wallet
-      const networkName = (network?.name ?? 'testnet').toLowerCase()
-      const isShelbynet = networkName === 'shelbynet'
+      // network?.name can be "shelbynet", "SHELBYNET", "custom", etc. — be defensive
+      const rawNetworkName = String(network?.name ?? '').toLowerCase()
+      const rawNetworkUrl = String(network?.url ?? '').toLowerCase()
+      const isShelbynet =
+        rawNetworkName.includes('shelbynet') ||
+        rawNetworkUrl.includes('shelbynet')
       const shelbyRpcBase = isShelbynet
         ? 'https://api.shelbynet.shelby.xyz/shelby'
         : 'https://api.testnet.shelby.xyz/shelby'
-      const aptosFullNode =
-        network?.url ??
-        (isShelbynet
-          ? 'https://api.shelbynet.shelby.xyz/v1'
-          : 'https://api.testnet.aptoslabs.com/v1')
+      const aptosFullNode = isShelbynet
+        ? 'https://api.shelbynet.shelby.xyz/v1'
+        : 'https://api.testnet.aptoslabs.com/v1'
+      console.log('[useShelbyUpload] raw network:', { name: network?.name, url: network?.url, chainId: network?.chainId }, '→ isShelbynet:', isShelbynet)
 
       // Init Shelby + Aptos clients
       const shelbyClient = new ShelbyClient({
@@ -115,10 +118,11 @@ export function useShelbyUpload() {
 
       // ── Phase 4: Upload to Shelby RPC ─────────────────────
       // Shelby RPC needs time to index the on-chain registration.
-      // Retry putBlob with exponential backoff (up to ~30s).
+      // Wait a fixed 4s first, then retry with exponential backoff (up to ~45s total).
       setPhase('uploading')
+      await new Promise((r) => setTimeout(r, 4000))
       const MAX_RETRIES = 8
-      const BASE_DELAY_MS = 1500
+      const BASE_DELAY_MS = 2000
       let lastPutError: unknown
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         if (attempt > 0) {

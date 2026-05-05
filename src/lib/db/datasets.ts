@@ -23,8 +23,8 @@ export async function listDatasets(opts: ListDatasetsOptions = {}) {
   }
 
   if (tag) {
-    // tags is stored as JSON array string, search within it
-    conditions.push(like(datasets.tags, `%"${tag}"%`))
+    // Case-insensitive search within the JSON array string
+    conditions.push(sql`lower(${datasets.tags}) LIKE lower(${'%"' + tag + '"%'})`)
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined

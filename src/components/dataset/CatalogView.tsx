@@ -27,6 +27,7 @@ export function CatalogView() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [data, setData] = useState<CatalogData | null>(null)
+  const [tags, setTags] = useState<TagCount[]>([])
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -36,20 +37,24 @@ export function CatalogView() {
   const order = searchParams.get('order') ?? 'desc'
   const page = parseInt(searchParams.get('page') ?? '1', 10)
 
+  // Fetch tags once on mount (not re-fetched on every filter change — avoids sidebar flicker)
+  useEffect(() => {
+    fetch('/api/datasets?includeTags=true&limit=1')
+      .then((r) => r.json())
+      .then((json) => setTags(json.tags ?? []))
+      .catch(() => {})
+  }, [])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (q) params.set('q', q)
       if (tag) params.set('tag', tag)
-      params.set(
-        'sort',
-        sort === 'size_bytes_asc' || sort === 'size_bytes_desc' ? 'size_bytes' : sort,
-      )
+      params.set('sort', sort === 'size_bytes_asc' || sort === 'size_bytes_desc' ? 'size_bytes' : sort)
       params.set('order', sort === 'size_bytes_asc' ? 'asc' : order)
       params.set('page', String(page))
       params.set('limit', '20')
-      params.set('includeTags', 'true')
 
       const res = await fetch(`/api/datasets?${params.toString()}`)
       const json = await res.json()
@@ -71,11 +76,10 @@ export function CatalogView() {
       params.delete(key)
     }
     params.delete('page')
-    router.push(`/?${params.toString()}`)
+    router.replace(`/?${params.toString()}`)
   }
 
   const hasFilters = !!(q || tag)
-  const allTags = data?.tags ?? []
 
   return (
     <div className='max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8'>
@@ -116,22 +120,19 @@ export function CatalogView() {
             value={sort === 'size_bytes' ? `size_bytes_${order}` : sort}
             onChange={(e) => {
               const v = e.target.value
+              const p = new URLSearchParams(searchParams.toString())
               if (v === 'size_bytes_asc') {
-                updateParam('sort', 'size_bytes')
-                const p = new URLSearchParams(searchParams.toString())
                 p.set('sort', 'size_bytes')
                 p.set('order', 'asc')
-                p.delete('page')
-                router.push(`/?${p.toString()}`)
               } else if (v === 'size_bytes_desc') {
-                const p = new URLSearchParams(searchParams.toString())
                 p.set('sort', 'size_bytes')
                 p.set('order', 'desc')
-                p.delete('page')
-                router.push(`/?${p.toString()}`)
               } else {
-                updateParam('sort', v)
+                p.set('sort', v)
+                p.delete('order')
               }
+              p.delete('page')
+              router.replace(`/?${p.toString()}`)
             }}
             className='bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer'
             aria-label='Sort datasets'
@@ -152,14 +153,11 @@ export function CatalogView() {
           {q && <FilterChip label={`Search: ${q}`} onRemove={() => updateParam('q', null)} />}
           {tag && <FilterChip label={`Tag: ${tag}`} onRemove={() => updateParam('tag', null)} />}
           <button
-            onClick={() => {
-              const p = new URLSearchParams()
-              router.push('/')
-            }}
-            className='text-xs text-slate-500 hover:text-slate-400 transition-colors cursor-pointer'
-          >
-            Clear all
-          </button>
+        onClick={() => router.replace('/')}
+        className='text-xs text-slate-500 hover:text-slate-400 transition-colors cursor-pointer'
+      >
+        Clear all
+      </button>
         </div>
       )}
 
@@ -184,13 +182,13 @@ export function CatalogView() {
             </button>
           </div>
 
-          {allTags.length > 0 && (
+          {tags.length > 0 && (
             <div>
               <h3 className='text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3'>
                 Tags
               </h3>
               <div className='space-y-1'>
-                {allTags.map(({ tag: t, count }) => (
+                {tags.map(({ tag: t, count }) => (
                   <button
                     key={t}
                     onClick={() => {
@@ -283,7 +281,7 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
           : 'Be the first to upload a dataset to DataShelf.'}
       </p>
       {hasFilters ? (
-        <Button variant='secondary' onClick={() => router.push('/')}>
+        <Button variant='secondary' onClick={() => router.replace('/')}>
           Clear filters
         </Button>
       ) : (
