@@ -6,9 +6,9 @@ import { WalletButton } from '@/components/layout/WalletButton'
 import { Database, Search, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useRef } from 'react'
+import { Suspense, useRef } from 'react'
 
-export function Navbar() {
+function NavSearch() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -27,6 +27,24 @@ export function Navbar() {
   }
 
   return (
+    <form onSubmit={handleSearch} className='flex-1 max-w-xl'>
+      <div className='relative'>
+        <Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none' />
+        <Input
+          ref={inputRef}
+          type='search'
+          placeholder='Search datasets…'
+          defaultValue={searchParams.get('q') ?? ''}
+          className='pl-9 pr-4'
+          aria-label='Search datasets'
+        />
+      </div>
+    </form>
+  )
+}
+
+export function Navbar() {
+  return (
     <nav className='sticky top-0 z-50 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md'>
       <div className='max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8'>
         <div className='flex h-16 items-center gap-4'>
@@ -43,19 +61,18 @@ export function Navbar() {
           </Link>
 
           {/* Search */}
-          <form onSubmit={handleSearch} className='flex-1 max-w-xl'>
-            <div className='relative'>
-              <Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none' />
-              <Input
-                ref={inputRef}
-                type='search'
-                placeholder='Search datasets…'
-                defaultValue={searchParams.get('q') ?? ''}
-                className='pl-9 pr-4'
-                aria-label='Search datasets'
-              />
-            </div>
-          </form>
+          <Suspense
+            fallback={
+              <div className='flex-1 max-w-xl'>
+                <div className='relative'>
+                  <Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none' />
+                  <Input type='search' placeholder='Search datasets…' className='pl-9 pr-4' aria-label='Search datasets' />
+                </div>
+              </div>
+            }
+          >
+            <NavSearch />
+          </Suspense>
 
           {/* Upload CTA */}
           <Link href='/upload'>
