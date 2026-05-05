@@ -25,7 +25,14 @@ type WizardState =
   | { step: 2; file: File }
   | { step: 3; file: File; name: string; description: string; tags: string[] }
   | { step: 'success'; datasetId: string; txHash: string; merkleRoot: string }
-  | { step: 'error'; message: string; file: File; name: string; description: string; tags: string[] }
+  | {
+      step: 'error'
+      message: string
+      file: File
+      name: string
+      description: string
+      tags: string[]
+    }
 
 const MAX_BYTES = 5 * 1024 * 1024 * 1024 // 5 GB
 
@@ -68,8 +75,17 @@ export function UploadWizard() {
 
   // ── Step 2 ──────────────────────────────────────────────
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState<string | null>('Name is required')
+  const [nameTouched, setNameTouched] = useState(false)
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState<string[]>([])
+
+  function validateName(value: string): string | null {
+    const trimmed = value.trim()
+    if (!trimmed) return 'Name is required'
+    if (trimmed.length < 3) return `Name must be at least 3 characters (${trimmed.length}/3)`
+    return null
+  }
 
   function addTag(value: string) {
     const t = value.trim().toLowerCase().slice(0, 32)
@@ -93,11 +109,17 @@ export function UploadWizard() {
 
   function goToStep3() {
     if (state.step !== 2) return
-    if (!name.trim() || name.trim().length < 3) {
-      alert('Dataset name must be at least 3 characters.')
-      return
-    }
-    setState({ step: 3, file: state.file, name: name.trim(), description: description.trim(), tags })
+    const err = validateName(name)
+    setNameError(err)
+    setNameTouched(true)
+    if (err) return
+    setState({
+      step: 3,
+      file: state.file,
+      name: name.trim(),
+      description: description.trim(),
+      tags,
+    })
   }
 
   // ── Step 3: upload ───────────────────────────────────────
@@ -187,12 +209,26 @@ export function UploadWizard() {
           </div>
 
           <div className='space-y-4'>
-            <FormField label='Name' required hint={`${name.length}/120`}>
+            <FormField
+              label='Name'
+              required
+              hint={`${name.length}/120`}
+              error={nameTouched ? nameError : null}
+            >
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value.slice(0, 120))}
+                onChange={(e) => {
+                  const v = e.target.value.slice(0, 120)
+                  setName(v)
+                  setNameError(validateName(v))
+                }}
+                onBlur={() => {
+                  setNameTouched(true)
+                  setNameError(validateName(name))
+                }}
                 placeholder='e.g. English Wikipedia Subset 2025'
                 autoFocus
+                className={nameTouched && nameError ? 'border-red-500 focus:ring-red-500' : ''}
               />
             </FormField>
 
@@ -238,12 +274,7 @@ export function UploadWizard() {
             <Button variant='secondary' onClick={() => setState({ step: 1 })}>
               Back
             </Button>
-            <Button
-              variant='primary'
-              onClick={goToStep3}
-              disabled={name.trim().length < 3}
-              className='flex-1'
-            >
+            <Button variant='primary' onClick={goToStep3} disabled={!!nameError} className='flex-1'>
               Continue
             </Button>
           </div>
@@ -269,9 +300,7 @@ export function UploadWizard() {
             />
             {state.description && <SummaryRow label='Description' value={state.description} />}
             {state.tags.length > 0 && <SummaryRow label='Tags' value={state.tags.join(', ')} />}
-            {account && (
-              <SummaryRow label='Uploader' value={String(account.address)} mono />
-            )}
+            {account && <SummaryRow label='Uploader' value={String(account.address)} mono />}
           </div>
 
           {/* Wallet gate */}
@@ -352,7 +381,13 @@ export function UploadWizard() {
             variant='primary'
             onClick={() => {
               reset()
-              setState({ step: 3, file: state.file, name: state.name, description: state.description, tags: state.tags })
+              setState({
+                step: 3,
+                file: state.file,
+                name: state.name,
+                description: state.description,
+                tags: state.tags,
+              })
             }}
             className='w-full'
           >
@@ -461,11 +496,13 @@ function FormField({
   label,
   required,
   hint,
+  error,
   children,
 }: {
   label: string
   required?: boolean
   hint?: string
+  error?: string | null
   children: React.ReactNode
 }) {
   return (
@@ -478,6 +515,11 @@ function FormField({
         {hint && <span className='text-xs text-slate-600'>{hint}</span>}
       </div>
       {children}
+      {error && (
+        <p className='mt-1.5 text-xs text-red-400 flex items-center gap-1'>
+          <span>⚠</span> {error}
+        </p>
+      )}
     </div>
   )
 }

@@ -42,12 +42,11 @@ export interface ShelbyUploadResult {
   datasetId: string
 }
 
-const SHELBY_RPC_BASE = 'https://api.testnet.shelby.xyz/shelby'
 const EXPIRATION_MICROS = () => BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000) * BigInt(1000)
 const ENCODING = ERASURE_CODE_PARAMS.ClayCode_16Total_10Data_13Helper.enumIndex
 
 export function useShelbyUpload() {
-  const { account, signAndSubmitTransaction } = useWallet()
+  const { account, signAndSubmitTransaction, network } = useWallet()
   const [phase, setPhase] = useState<UploadPhase>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -62,12 +61,26 @@ export function useShelbyUpload() {
 
       const apiKey = process.env.NEXT_PUBLIC_SHELBY_API_KEY
 
+      // Detect network from connected wallet
+      const networkName = (network?.name ?? 'testnet').toLowerCase()
+      const isShelbynet = networkName === 'shelbynet'
+      const shelbyRpcBase = isShelbynet
+        ? 'https://api.shelbynet.shelby.xyz/shelby'
+        : 'https://api.testnet.shelby.xyz/shelby'
+      const aptosFullNode =
+        network?.url ??
+        (isShelbynet
+          ? 'https://api.shelbynet.shelby.xyz/v1'
+          : 'https://api.testnet.aptoslabs.com/v1')
+
       // Init Shelby + Aptos clients
       const shelbyClient = new ShelbyClient({
-        network: Network.TESTNET,
+        network: isShelbynet ? Network.SHELBYNET : Network.TESTNET,
         ...(apiKey ? { apiKey } : {}),
       })
-      const aptosClient = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+      const aptosClient = new Aptos(
+        new AptosConfig({ network: Network.CUSTOM, fullnode: aptosFullNode }),
+      )
 
       // Read file once
       const arrayBuffer = await params.file.arrayBuffer()
@@ -108,7 +121,7 @@ export function useShelbyUpload() {
         blobData: uint8Data,
       })
 
-      const blobUrl = `${SHELBY_RPC_BASE}/v1/blobs/${account.address}/${encodeURIComponent(blobName)}`
+      const blobUrl = `${shelbyRpcBase}/v1/blobs/${account.address}/${encodeURIComponent(blobName)}`
 
       // ── Phase 5: Register in DataShelf DB ─────────────────
       setPhase('registering')
@@ -143,7 +156,7 @@ export function useShelbyUpload() {
         datasetId: id,
       }
     },
-    [account, signAndSubmitTransaction],
+    [account, signAndSubmitTransaction, network],
   )
 
   const reset = useCallback(() => {

@@ -7,7 +7,7 @@ import { type PropsWithChildren } from 'react'
 export function WalletProvider({ children }: PropsWithChildren) {
   return (
     <AptosWalletAdapterProvider
-      autoConnect={false}
+      autoConnect={true}
       dappConfig={{
         network: Network.TESTNET,
         aptosApiKeys: {

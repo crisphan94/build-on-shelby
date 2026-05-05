@@ -122,7 +122,7 @@ export function DatasetDetail({ dataset }: DatasetDetailProps) {
           </a>
 
           {/* Verify */}
-          <div className='bg-slate-800 rounded-xl border border-slate-700 p-4'>
+          <div className='bg-slate-800 rounded-xl border border-slate-700 p-4 mt-4'>
             <p className='text-sm font-medium text-slate-200 mb-1'>Verify Integrity</p>
             <p className='text-xs text-slate-500 mb-4'>
               Check that this dataset&apos;s Merkle root matches Shelby&apos;s on-chain commitment.

@@ -137,7 +137,7 @@ export function CatalogView() {
             aria-label='Sort datasets'
           >
             {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
+              <option className='mx-2' key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
