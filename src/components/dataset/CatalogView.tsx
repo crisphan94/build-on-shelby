@@ -217,7 +217,8 @@ export function CatalogView() {
 
         {/* Grid */}
         <div className='flex-1 min-w-0'>
-          {loading ? (
+          {/* Initial load — show skeletons */}
+          {loading && !data ? (
             <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6'>
               {Array.from({ length: 9 }).map((_, i) => (
                 <DatasetCardSkeleton key={i} />
@@ -227,7 +228,11 @@ export function CatalogView() {
             <EmptyState hasFilters={hasFilters} />
           ) : (
             <>
-              <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6'>
+              {/* Refetching — keep cards, dim slightly */}
+              <div
+                className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6'
+                style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 150ms ease' }}
+              >
                 {data.data.map((ds) => (
                   <DatasetCard key={ds.id} dataset={ds} />
                 ))}
